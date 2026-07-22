@@ -1,0 +1,28 @@
+# Secrets & environment-specific config — NEVER commit
+.env
+*.local.yaml
+config.yaml
+
+# Data — never commit real telemetry
+data/
+*.csv
+*.parquet
+*.dump
+*.bak
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
