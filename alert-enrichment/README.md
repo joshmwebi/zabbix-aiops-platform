@@ -53,6 +53,7 @@ Set in `.env` (see `.env.example`):
 | Variable | Default | Meaning |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | required unless using `--dry-run` |
+| `ANTHROPIC_BASE_URL` | *(unset)* | internal LLM gateway endpoint; blank uses the public API |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5` | model used for triage |
 | `MIN_SEVERITY` | `2` | ignore below Warning |
 | `FLEET_INCIDENT_THRESHOLD` | `3` | hosts sharing a trigger before it counts as fleet-wide |

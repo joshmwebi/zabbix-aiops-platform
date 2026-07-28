@@ -44,7 +44,13 @@ Respond with ONLY a JSON object, no markdown fences, with these keys:
 
 def enrich_incident(ctx: dict[str, Any]) -> dict[str, Any]:
     """Send one incident's context to the model and return parsed triage output."""
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    # base_url lets this point at an internal/enterprise LLM gateway instead of
+    # the public API — useful where telemetry must stay on approved
+    # infrastructure. Unset means the SDK's default endpoint.
+    client = Anthropic(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        base_url=os.environ.get("ANTHROPIC_BASE_URL") or None,
+    )
     model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
     message = client.messages.create(

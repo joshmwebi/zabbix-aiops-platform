@@ -34,7 +34,7 @@ def make_problem(eventid: str, host: str, name: str, clock: int, severity: str =
 def test_fleet_wide_failure_collapses_to_one_incident():
     """The Netlogon case: identical trigger on many hosts is one incident."""
     problems = [
-        make_problem(str(i), f"MTKWPTI{i:02d}", "MSSQL: login failed", 1_700_000_000)
+        make_problem(str(i), f"node{i:02d}", "MSSQL: login failed", 1_700_000_000)
         for i in range(1, 38)
     ]
 
@@ -48,8 +48,8 @@ def test_fleet_wide_failure_collapses_to_one_incident():
 
 def test_unrelated_problems_stay_separate():
     problems = [
-        make_problem("1", "MTKWPTI01", "Disk C: low on free space", 1_700_000_000),
-        make_problem("2", "MTKWPTI02", "Service not running", 1_700_000_100),
+        make_problem("1", "node01", "Disk C: low on free space", 1_700_000_000),
+        make_problem("2", "node02", "Service not running", 1_700_000_100),
     ]
 
     incidents = context.group_into_incidents(problems, fleet_threshold=3)
@@ -61,8 +61,8 @@ def test_unrelated_problems_stay_separate():
 def test_below_threshold_is_not_fleet_wide():
     """Two hosts sharing a trigger is not yet evidence of a shared cause."""
     problems = [
-        make_problem("1", "MTKWPTI01", "Disk C: low on free space", 1_700_000_000),
-        make_problem("2", "MTKWPTI02", "Disk C: low on free space", 1_700_000_050),
+        make_problem("1", "node01", "Disk C: low on free space", 1_700_000_000),
+        make_problem("2", "node02", "Disk C: low on free space", 1_700_000_050),
     ]
 
     incidents = context.group_into_incidents(problems, fleet_threshold=3)
@@ -74,9 +74,9 @@ def test_below_threshold_is_not_fleet_wide():
 
 def test_fleet_incidents_sort_before_single_host_ones():
     problems = [
-        make_problem("1", "MTKWPTI01", "Disk C: low on free space", 1_699_000_000, "5"),
+        make_problem("1", "node01", "Disk C: low on free space", 1_699_000_000, "5"),
         *[
-            make_problem(str(i + 10), f"MTKWPTI{i:02d}", "MSSQL: login failed", 1_700_000_000)
+            make_problem(str(i + 10), f"node{i:02d}", "MSSQL: login failed", 1_700_000_000)
             for i in range(1, 6)
         ],
     ]
@@ -123,12 +123,12 @@ def test_disk_thresholds_stay_separate():
 
 
 def test_scattered_service_instances_collapse_into_one_incident():
-    """The MTKWPTI01 case: five instance-suffixed alerts on one host."""
+    """Several instance-suffixed alerts for one service on a single host."""
     suffixes = ["190490", "642e4d9", "8139a4", "179687e", "1bfbe82"]
     problems = [
         make_problem(
             str(i),
-            "MTKWPTI01",
+            "node01",
             f'Windows: "webthreatdefusersvc_{s}" (Web Threat Defense User Service_{s}) is not running (startup type automatic)',
             1_700_000_000 + i,
         )
@@ -151,7 +151,7 @@ def test_same_service_across_hosts_becomes_fleet_incident():
     problems = [
         make_problem(
             str(i),
-            f"MTKWPTI{i:02d}",
+            f"node{i:02d}",
             f'Windows: "webthreatdefusersvc_{i:06x}" (Web Threat Defense User Service_{i:06x}) is not running (startup type automatic)',
             1_700_000_000,
         )
@@ -167,9 +167,9 @@ def test_same_service_across_hosts_becomes_fleet_incident():
 
 def test_worst_severity_wins_within_an_incident():
     problems = [
-        make_problem("1", "MTKWPTI01", "Same trigger", 1_700_000_000, "2"),
-        make_problem("2", "MTKWPTI02", "Same trigger", 1_700_000_000, "5"),
-        make_problem("3", "MTKWPTI03", "Same trigger", 1_700_000_000, "3"),
+        make_problem("1", "node01", "Same trigger", 1_700_000_000, "2"),
+        make_problem("2", "node02", "Same trigger", 1_700_000_000, "5"),
+        make_problem("3", "node03", "Same trigger", 1_700_000_000, "3"),
     ]
 
     incidents = context.group_into_incidents(problems, fleet_threshold=3)
