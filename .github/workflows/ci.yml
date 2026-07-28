@@ -21,4 +21,4 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt ruff pytest
       - run: ruff check .
-      - run: python -m pytest alert-enrichment/test_context.py -v
+      - run: python -m pytest alert-enrichment/ -v

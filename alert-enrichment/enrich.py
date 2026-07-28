@@ -33,13 +33,71 @@ Rules:
 - Never recommend destructive actions (restarting production services,
   deleting data) as a first step.
 
-Respond with ONLY a JSON object, no markdown fences, with these keys:
+Your entire response must be a single JSON object and nothing else — no
+preamble, no explanation before or after it, no markdown code fences.
+Keys:
   "headline": one sentence, under 100 characters, what is happening
   "probable_cause": 1-2 sentences
   "blast_radius": what is affected in practice, and what is likely fine
   "first_action": the single next thing to check or run
   "confidence": "high" | "medium" | "low"
 """
+
+
+def _extract_json(text: str) -> dict[str, Any] | None:
+    """Pull a JSON object out of a model response.
+
+    Models sometimes wrap the object in code fences, or prefix it with a
+    sentence of preamble despite instructions. Rather than trusting the
+    response to be bare JSON, scan for the first balanced {...} span and
+    parse that. Returns None if nothing parses.
+    """
+    stripped = text.strip()
+
+    # Fast path: the whole thing is JSON, possibly fenced.
+    for candidate in (
+        stripped,
+        stripped.removeprefix("```json").removeprefix("```").removesuffix("```").strip(),
+    ):
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    # Slow path: find the first balanced brace span, ignoring braces that
+    # appear inside string literals.
+    depth = 0
+    start = None
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(stripped):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    parsed = json.loads(stripped[start : i + 1])
+                    if isinstance(parsed, dict):
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+                start = None
+    return None
 
 
 def enrich_incident(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -67,21 +125,28 @@ def enrich_incident(ctx: dict[str, Any]) -> dict[str, Any]:
 
     text = "".join(block.text for block in message.content if block.type == "text")
 
-    # Models occasionally wrap JSON in code fences despite instructions.
-    cleaned = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
-
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        # Never let a formatting failure lose the alert. Degrade instead.
+    parsed = _extract_json(text)
+    if parsed is not None:
+        # Guarantee the keys the formatter and sinks expect, so a partial
+        # response can't cause a KeyError downstream.
         return {
-            "headline": ctx.get("problem", "Unparsed enrichment"),
-            "probable_cause": "Model response was not valid JSON.",
-            "blast_radius": "unknown",
-            "first_action": "Review the raw response below.",
-            "confidence": "low",
-            "_raw": text,
+            "headline": parsed.get("headline", ctx.get("problem", "")),
+            "probable_cause": parsed.get("probable_cause", "-"),
+            "blast_radius": parsed.get("blast_radius", "-"),
+            "first_action": parsed.get("first_action", "-"),
+            "confidence": parsed.get("confidence", "low"),
         }
+
+    # Never let a formatting failure lose the alert. Degrade, and keep the
+    # raw text so the failure can be diagnosed from the log.
+    return {
+        "headline": ctx.get("problem", "Unparsed enrichment"),
+        "probable_cause": "Model response was not valid JSON.",
+        "blast_radius": "unknown",
+        "first_action": "Review the raw response in logs/enriched-alerts.jsonl.",
+        "confidence": "low",
+        "_raw": text[:2000],
+    }
 
 
 def format_for_console(ctx: dict[str, Any], triage: dict[str, Any]) -> str:
