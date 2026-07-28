@@ -58,6 +58,8 @@ Set in `.env` (see `.env.example`):
 | `MIN_SEVERITY` | `2` | ignore below Warning |
 | `FLEET_INCIDENT_THRESHOLD` | `3` | hosts sharing a trigger before it counts as fleet-wide |
 | `POLL_INTERVAL_SECONDS` | `120` | polling cadence |
+| `TEAMS_WEBHOOK_URL` | *(unset)* | post triage cards to a Teams channel |
+| `ZABBIX_WRITE_TOKEN` | *(unset)* | attach triage to the problem in Zabbix (separate, acknowledge-capable account) |
 
 ## How the pieces fit
 
@@ -70,6 +72,28 @@ poll.py / app.py     entry points: when and how work is triggered
 Retrieval and reasoning are deliberately separate: the same context can be
 replayed against a different model or prompt, and a poor answer is debugged
 by inspecting exactly what the model was shown (`--dry-run` prints it).
+
+## Running as a service
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1
+```
+
+Registers a scheduled task that starts the poller at boot and restarts it on
+failure. Output goes to `logs/poller.out.log`. Manage with
+`Get-/Start-/Stop-/Unregister-ScheduledTask aiops-alert-enrichment`.
+Rationale for Task Scheduler over a service wrapper: `docs/adr/ADR-005`.
+
+## Delivery
+
+Sinks activate when configured, and fail independently:
+
+- **Teams** — set `TEAMS_WEBHOOK_URL` (a Teams Workflows "when a webhook
+  request is received" endpoint). Each incident posts as a card.
+- **Zabbix** — set `ZABBIX_WRITE_TOKEN`. Triage is attached to the problem
+  via `event.acknowledge`, so it shows in the problem view next to the
+  alert. The token must come from an account allowed to acknowledge; keep
+  the polling token read-only.
 
 ## Wiring up the webhook (later)
 

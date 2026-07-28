@@ -37,6 +37,7 @@ sys.path.insert(0, str(REPO_ROOT))
 # context.py and enrich.py sit next to this file. Python automatically puts a
 # script's own directory first on sys.path, so plain imports find them.
 import context  # noqa: E402
+import deliver  # noqa: E402
 import enrich  # noqa: E402
 from pipeline.zabbix_client import ZabbixClient  # noqa: E402
 
@@ -87,11 +88,15 @@ def run_once(zbx: ZabbixClient, seen: set[str], *, dry_run: bool) -> int:
 
         triage = enrich.enrich_incident(ctx)
         print(enrich.format_for_console(ctx, triage))
+        sinks = deliver.deliver(ctx, triage, incident["event_ids"])
+        if sinks:
+            print(f"  delivered to: {', '.join(sinks)}\n")
         write_log(
             {
                 "timestamp": datetime.now().isoformat(timespec="seconds"),
                 "context": ctx,
                 "triage": triage,
+                "delivered_to": sinks,
             }
         )
         seen.update(incident["event_ids"])
