@@ -5,7 +5,7 @@ metrics from Zabbix into a warehouse, models them with dbt (medallion
 architecture), and layers on LLM-powered alert enrichment, an MCP server for
 natural-language ops queries, dashboards, and anomaly detection.
 
-> Status: early scaffold — Project 1 (alert enrichment) in progress.
+> Status: alert enrichment (Project 1) working; pipeline and warehouse next.
 
 ## Architecture
 
@@ -31,7 +31,7 @@ flowchart LR
 | Path | What it is |
 |---|---|
 | `pipeline/` | Extraction from Zabbix API into the warehouse |
-| `alert-enrichment/` | Webhook service: Zabbix alert → LLM triage → Teams |
+| `alert-enrichment/` | Correlates fleet alerts, enriches them with an LLM (poll + webhook) |
 | `mcp-server/` | MCP tools exposing fleet telemetry to LLM agents |
 | `dbt/` | Bronze/silver/gold models + tests |
 | `dashboard/` | Streamlit capacity & utilization views |
@@ -51,6 +51,17 @@ make hosts            # smoke test: lists hosts via the API
 ```
 
 Running against a real fleet is the same code — only `.env` changes.
+
+## Alert enrichment
+
+```bash
+python alert-enrichment/poll.py --once --dry-run   # show context, no LLM call
+python alert-enrichment/poll.py --once             # enrich what is broken now
+```
+
+Identical triggers firing across several hosts collapse into one incident, so
+a single upstream failure reads as one summary rather than forty alerts. See
+[`alert-enrichment/`](alert-enrichment/).
 
 ## Design notes
 

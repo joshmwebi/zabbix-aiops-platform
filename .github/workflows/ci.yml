@@ -19,6 +19,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt ruff
+      - run: pip install -r requirements.txt ruff pytest
       - run: ruff check .
-      - run: python -m compileall pipeline
+      - run: python -m pytest alert-enrichment/test_context.py -v

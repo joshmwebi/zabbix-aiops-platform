@@ -5,6 +5,7 @@ config.yaml
 
 # Data — never commit real telemetry
 data/
+logs/
 *.csv
 *.parquet
 *.dump
