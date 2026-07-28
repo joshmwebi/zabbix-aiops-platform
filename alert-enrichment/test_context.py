@@ -89,6 +89,82 @@ def test_fleet_incidents_sort_before_single_host_ones():
     assert incidents[1]["kind"] == "single"
 
 
+def test_windows_instance_ids_normalize_to_one_key():
+    """Real trigger names observed in the lab, differing only by instance id."""
+    a = 'Windows: "webthreatdefusersvc_14fa09" (Web Threat Defense User Service_14fa09) is not running (startup type automatic)'
+    b = 'Windows: "webthreatdefusersvc_4258fcc7" (Web Threat Defense User Service_4258fcc7) is not running (startup type automatic)'
+
+    assert context.normalize_problem_name(a) == context.normalize_problem_name(b)
+
+
+def test_version_numbers_normalize_to_one_key():
+    a = 'Windows: "GoogleUpdaterService152.0.7933.0" (Google Updater Service (GoogleUpdaterService152.0.7933.0)) is not running (startup type automatic)'
+    b = 'Windows: "GoogleUpdaterService150.0.7863.0" (Google Updater Service (GoogleUpdaterService150.0.7863.0)) is not running (startup type automatic)'
+
+    assert context.normalize_problem_name(a) == context.normalize_problem_name(b)
+
+
+def test_genuinely_different_problems_do_not_normalize_together():
+    """Normalization must not over-merge unrelated triggers."""
+    disk = "Windows: FS [(C:)]: Space is critically low (used > 90%, total 255.8GB)"
+    agent = "Windows: Zabbix agent is not available (or nodata for 30m)"
+    camsvc = 'Windows: "camsvc" (Capability Access Manager Service) is not running (startup type automatic)'
+
+    keys = {context.normalize_problem_name(n) for n in (disk, agent, camsvc)}
+    assert len(keys) == 3
+
+
+def test_disk_thresholds_stay_separate():
+    """'low' and 'critically low' are different triggers despite similar text."""
+    low = "Windows: FS [(C:)]: Space is low (used > 80%, total 255.8GB)"
+    crit = "Windows: FS [(C:)]: Space is critically low (used > 90%, total 255.8GB)"
+
+    assert context.normalize_problem_name(low) != context.normalize_problem_name(crit)
+
+
+def test_scattered_service_instances_collapse_into_one_incident():
+    """The MTKWPTI01 case: five instance-suffixed alerts on one host."""
+    suffixes = ["190490", "642e4d9", "8139a4", "179687e", "1bfbe82"]
+    problems = [
+        make_problem(
+            str(i),
+            "MTKWPTI01",
+            f'Windows: "webthreatdefusersvc_{s}" (Web Threat Defense User Service_{s}) is not running (startup type automatic)',
+            1_700_000_000 + i,
+        )
+        for i, s in enumerate(suffixes)
+    ]
+
+    incidents = context.group_into_incidents(problems, fleet_threshold=3)
+
+    assert len(incidents) == 1
+    assert incidents[0]["instances"] == 5
+    assert incidents[0]["name_variants"] == 5
+    assert incidents[0]["host_count"] == 1
+    # Display name is a real trigger name, annotated, never the normalized key.
+    assert "webthreatdefusersvc_" in incidents[0]["name"]
+    assert "variants" in incidents[0]["name"]
+
+
+def test_same_service_across_hosts_becomes_fleet_incident():
+    """After normalization, per-host instance ids no longer hide fleet events."""
+    problems = [
+        make_problem(
+            str(i),
+            f"MTKWPTI{i:02d}",
+            f'Windows: "webthreatdefusersvc_{i:06x}" (Web Threat Defense User Service_{i:06x}) is not running (startup type automatic)',
+            1_700_000_000,
+        )
+        for i in range(1, 9)
+    ]
+
+    incidents = context.group_into_incidents(problems, fleet_threshold=3)
+
+    assert len(incidents) == 1
+    assert incidents[0]["kind"] == "fleet"
+    assert incidents[0]["host_count"] == 8
+
+
 def test_worst_severity_wins_within_an_incident():
     problems = [
         make_problem("1", "MTKWPTI01", "Same trigger", 1_700_000_000, "2"),

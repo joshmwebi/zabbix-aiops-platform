@@ -14,6 +14,12 @@ This service groups problems by trigger name, treats any trigger active on
 several hosts at once as a single incident, and asks an LLM to reason about
 the pattern rather than the individual alerts.
 
+Names are normalized before grouping: Windows generates per-logon instance
+ids (`webthreatdefusersvc_14fa09`) and software embeds versions
+(`GoogleUpdaterService152.0.7933.0`), so the same service otherwise appears
+under a different name on every host. On a real 44-host fleet this took 96
+problems from 42 incidents down to 17. See `docs/adr/ADR-003`.
+
 ## Two entry points
 
 | File | Mode | Requires |
