@@ -154,6 +154,18 @@ def main() -> int:
     backend = os.environ.get("WAREHOUSE_TYPE", "postgres")
     print(f"{datetime.now():%H:%M:%S}  extract -> {backend}" + ("  [DRY RUN]" if args.dry_run else ""))
 
+    if args.dry_run:
+        # A dry run's purpose is sizing the load before a warehouse exists,
+        # so it must not require one: no connection, no adapter installed,
+        # no watermark. Range defaults to --backfill-days or 1 day.
+        items = load_items(zbx, None, dry_run=True)
+        itemids = [i["itemid"] for i in items]
+        since = until - (args.backfill_days or 1) * 86400
+        rows, _ = load_trends(zbx, None, itemids, since, until, dry_run=True)
+        elapsed = time.time() - started
+        print(f"  {rows:,} rows in {elapsed:.1f}s (nothing written)")
+        return 0
+
     with get_warehouse() as wh:
         items = load_items(zbx, wh, args.dry_run)
         itemids = [i["itemid"] for i in items]
@@ -169,11 +181,11 @@ def main() -> int:
 
         rows, newest = load_trends(zbx, wh, itemids, since, until, args.dry_run)
 
-        if not args.dry_run and rows:
+        if rows:
             wh.set_watermark(STREAM, newest)
 
     elapsed = time.time() - started
-    print(f"  {rows:,} rows in {elapsed:.1f}s" + (" (nothing written)" if args.dry_run else ""))
+    print(f"  {rows:,} rows in {elapsed:.1f}s")
     return 0
 
 
