@@ -76,6 +76,64 @@ class ZabbixClient:
         )
 
 
+    def get_all_items(
+        self, value_types: tuple[int, ...] = (0, 3), key_filter: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Every enabled numeric item across the fleet, with its host.
+
+        value_type 0 = float, 3 = unsigned int. Text and log items are
+        excluded because trends only exist for numeric data.
+        """
+        params: dict[str, Any] = {
+            "output": ["itemid", "name", "key_", "units", "value_type", "delay"],
+            "selectHosts": ["hostid", "host"],
+            "filter": {"status": "0", "value_type": list(value_types)},
+            "sortfield": "itemid",
+        }
+        if key_filter:
+            params["search"] = {"key_": key_filter}
+        return self.call("item.get", params)
+
+    def get_trends(
+        self, itemids: list[str], time_from: int, time_till: int
+    ) -> list[dict[str, Any]]:
+        """Hourly min/avg/max/count rollups for the given items.
+
+        Zabbix pre-aggregates history into `trends` hourly and keeps it far
+        longer than raw history (typically a year vs. days). For capacity and
+        growth analysis this is the right grain: ~60x less data than raw
+        history with no loss of analytical value. See ADR-006.
+        """
+        return self.call(
+            "trend.get",
+            {
+                "output": "extend",
+                "itemids": itemids,
+                "time_from": time_from,
+                "time_till": time_till,
+            },
+        )
+
+    def get_history(
+        self, itemids: list[str], value_type: int, time_from: int, time_till: int,
+        limit: int = 100_000,
+    ) -> list[dict[str, Any]]:
+        """Raw values. Only for the few metrics where minute resolution matters."""
+        return self.call(
+            "history.get",
+            {
+                "output": "extend",
+                "itemids": itemids,
+                "history": value_type,
+                "time_from": time_from,
+                "time_till": time_till,
+                "sortfield": "clock",
+                "sortorder": "ASC",
+                "limit": limit,
+            },
+        )
+
+
 def main() -> int:
     load_dotenv()
     api_url = os.environ.get("ZABBIX_API_URL")
