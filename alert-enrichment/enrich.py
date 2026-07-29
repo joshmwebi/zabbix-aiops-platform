@@ -113,7 +113,10 @@ def enrich_incident(ctx: dict[str, Any]) -> dict[str, Any]:
 
     message = client.messages.create(
         model=model,
-        max_tokens=800,
+        # Generous ceiling: a response cut off mid-object produces JSON with
+        # no closing brace, which no parser can recover. Truncation was the
+        # cause of the remaining parse failures in early runs.
+        max_tokens=int(os.environ.get("ANTHROPIC_MAX_TOKENS", "1500")),
         system=SYSTEM_PROMPT,
         messages=[
             {
@@ -124,6 +127,10 @@ def enrich_incident(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
     text = "".join(block.text for block in message.content if block.type == "text")
+
+    # A truncated response can't be parsed; surface the reason rather than
+    # reporting a generic "not valid JSON".
+    truncated = getattr(message, "stop_reason", None) == "max_tokens"
 
     parsed = _extract_json(text)
     if parsed is not None:
@@ -141,7 +148,12 @@ def enrich_incident(ctx: dict[str, Any]) -> dict[str, Any]:
     # raw text so the failure can be diagnosed from the log.
     return {
         "headline": ctx.get("problem", "Unparsed enrichment"),
-        "probable_cause": "Model response was not valid JSON.",
+        "probable_cause": (
+            "Model response was truncated (hit max_tokens) — raise "
+            "ANTHROPIC_MAX_TOKENS."
+            if truncated
+            else "Model response was not valid JSON."
+        ),
         "blast_radius": "unknown",
         "first_action": "Review the raw response in logs/enriched-alerts.jsonl.",
         "confidence": "low",
