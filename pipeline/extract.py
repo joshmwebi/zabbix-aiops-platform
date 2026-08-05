@@ -93,6 +93,9 @@ def load_trends(
         win_end = min(win_start + window, until)
         window_rows = 0
 
+        # Accumulate the whole window before loading: bulk loading is far
+        # more efficient with one large batch than many small ones.
+        batch: list[tuple] = []
         for i in range(0, len(itemids), ITEM_CHUNK):
             chunk = itemids[i : i + ITEM_CHUNK]
             trends = zbx.get_trends(chunk, win_start, win_end)
@@ -100,8 +103,9 @@ def load_trends(
                 continue
 
             window_rows += len(trends)
+            newest = max(newest, max(int(t["clock"]) for t in trends))
             if not dry_run:
-                rows = [
+                batch.extend(
                     (
                         int(t["itemid"]),
                         int(t["clock"]),
@@ -112,13 +116,14 @@ def load_trends(
                         now_ts,
                     )
                     for t in trends
-                ]
-                wh.insert_many(
-                    "bronze_trends",
-                    ["itemid", "clock", "num", "value_min", "value_avg", "value_max", "_loaded_at"],
-                    rows,
                 )
-            newest = max(newest, max(int(t["clock"]) for t in trends))
+
+        if batch:
+            wh.insert_many(
+                "bronze_trends",
+                ["itemid", "clock", "num", "value_min", "value_avg", "value_max", "_loaded_at"],
+                batch,
+            )
 
         stamp = datetime.fromtimestamp(win_start, timezone.utc).strftime("%Y-%m-%d")
         print(f"  {stamp}: {window_rows:>7,} trend rows")

@@ -9,5 +9,5 @@ uvicorn>=0.32
 pydantic>=2.9
 
 # Pipeline — install the adapter for the backend you use
-psycopg2-binary>=2.9 ; platform_system != "nothing"
-snowflake-connector-python>=3.12
+psycopg2-binary>=2.9
+snowflake-connector-python[pandas]>=3.12

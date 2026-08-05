@@ -208,16 +208,49 @@ class SnowflakeWarehouse(Warehouse):
             cur.close()
 
     def insert_many(self, table: str, columns: list[str], rows: list[tuple]) -> int:
+        """Bulk load.
+
+        Row-wise INSERTs are the wrong tool at this volume — a 30-day
+        backfill is millions of rows, and executemany sends them a statement
+        at a time. write_pandas writes Parquet, PUTs it to an internal stage,
+        and COPY INTOs the table: the canonical Snowflake bulk path, orders
+        of magnitude faster.
+
+        Falls back to chunked executemany if pandas/pyarrow are unavailable,
+        so the adapter still works on a minimal install.
+        """
         if not rows:
             return 0
+
+        try:
+            import pandas as pd
+            from snowflake.connector.pandas_tools import write_pandas
+        except ImportError:
+            return self._insert_many_chunked(table, columns, rows)
+
+        # Snowflake upper-cases unquoted identifiers; match that so the
+        # column mapping lines up with the table as created.
+        df = pd.DataFrame(rows, columns=[c.upper() for c in columns])
+        success, _chunks, nrows, _out = write_pandas(
+            self.conn,
+            df,
+            table_name=table.upper(),
+            auto_create_table=False,
+            quote_identifiers=False,
+            chunk_size=100_000,
+        )
+        if not success:
+            raise RuntimeError(f"write_pandas failed loading {table}")
+        return nrows
+
+    def _insert_many_chunked(self, table: str, columns: list[str], rows: list[tuple]) -> int:
         cols = ", ".join(columns)
         placeholders = ", ".join(["%s"] * len(columns))
+        sql = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
         cur = self.conn.cursor()
         try:
-            # executemany batches into a single multi-row insert.
-            cur.executemany(
-                f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", rows
-            )
+            for i in range(0, len(rows), 10_000):
+                cur.executemany(sql, rows[i : i + 10_000])
         finally:
             cur.close()
         return len(rows)
