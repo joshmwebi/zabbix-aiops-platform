@@ -15,6 +15,23 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Sequence
 
+
+#Adding in key generation function to enable unsupervised access.
+def _load_private_key(path: str, passphrase: str | None):
+    """Read a PKCS#8 private key and return the DER bytes the connector wants."""
+    from cryptography.hazmat.primitives import serialization
+
+    with open(path, "rb") as fh:
+        key = serialization.load_pem_private_key(
+            fh.read(),
+            password=passphrase.encode() if passphrase else None,
+        )
+    return key.private_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
 # --------------------------------------------------------------------------
 # Schema
 # --------------------------------------------------------------------------
@@ -169,21 +186,22 @@ class SnowflakeWarehouse(Warehouse):
             "warehouse": os.environ.get("SNOWFLAKE_WAREHOUSE"),
             "role": os.environ.get("SNOWFLAKE_ROLE"),
         }
-        # Siemens SSO is likely; externalbrowser avoids storing a password.
-        # Set SNOWFLAKE_AUTHENTICATOR=externalbrowser for interactive runs,
-        # or supply a key pair / password for unattended ones.
-        auth = os.environ.get("SNOWFLAKE_AUTHENTICATOR")
-        if auth:
-            kwargs["authenticator"] = auth
-        if os.environ.get("SNOWFLAKE_PASSWORD"):
-            kwargs["password"] = os.environ["SNOWFLAKE_PASSWORD"]
-        if os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH"):
-            kwargs["private_key_file"] = os.environ["SNOWFLAKE_PRIVATE_KEY_PATH"]
-            if os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"):
-                kwargs["private_key_file_pwd"] = os.environ[
-                    "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"
-                ]
-
+        key_path = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH")
+        if key_path:
+            # Key-pair auth: machine-to-machine, no browser and no identity
+            # provider in the path, so it runs unattended and is unaffected by
+            # device-based conditional access. Wins over any leftover
+            # authenticator value in .env.
+            kwargs["private_key"] = _load_private_key(
+                key_path, os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE")
+            )
+        else:
+            auth = os.environ.get("SNOWFLAKE_AUTHENTICATOR")
+            if auth:
+                kwargs["authenticator"] = auth
+            if os.environ.get("SNOWFLAKE_PASSWORD"):
+                kwargs["password"] = os.environ["SNOWFLAKE_PASSWORD"]
+                
         self.conn = snowflake.connector.connect(
             **{k: v for k, v in kwargs.items() if v is not None}
         )

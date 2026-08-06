@@ -27,3 +27,7 @@ dbt/logs/
 Thumbs.db
 .vscode/
 .idea/
+
+#Generated Keys
+Keys/
+*.p8
