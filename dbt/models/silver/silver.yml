@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: silver_items
+    description: >
+      Item metadata with the Zabbix key parsed into metric family,
+      filesystem, and measurement mode, so downstream models never
+      pattern-match against raw key strings.
+    columns:
+      - name: itemid
+        tests: [not_null, unique]
+      - name: host
+        tests: [not_null]
+      - name: metric_family
+        tests: [not_null]
+      - name: is_zabbix_internal
+        description: True for zabbix[...] metrics describing the monitoring server itself.
+        tests: [not_null]
+
+  - name: silver_metric_hours
+    description: >
+      One row per item per hour with a real timestamp, joined to host and
+      item metadata, deduplicated on (itemid, hour).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [itemid, clock_epoch]
+    columns:
+      - name: itemid
+        tests: [not_null]
+      - name: hour_ts
+        tests: [not_null]
+      - name: host
+        tests: [not_null]
+      - name: value_avg
+        tests: [not_null]

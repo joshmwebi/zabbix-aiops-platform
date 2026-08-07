@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: gold_filesystem_daily
+    description: Daily filesystem utilisation per host and volume.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [host, filesystem, day]
+    columns:
+      - name: host
+        tests: [not_null]
+      - name: filesystem
+        tests: [not_null]
+      - name: pct_used_last
+        description: Last observed percent used on that day.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+              inclusive: true
+
+  - name: gold_host_headroom
+    description: >
+      Current utilisation, growth rate, and projected days to full per
+      volume, with a status derived from both level and trend.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [host, filesystem]
+    columns:
+      - name: pct_used_current
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+              inclusive: true
+      - name: days_to_full
+        description: Null when the volume is flat, shrinking, or has too little history.
+      - name: status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["ok", "trending", "warning", "critical"]
+
+  - name: gold_fleet_daily
+    description: One row per day summarising fleet-wide utilisation and reporting coverage.
+    columns:
+      - name: day
+        tests: [not_null, unique]
+      - name: hosts_reporting
+        description: >
+          Distinct hosts producing filesystem telemetry that day. A sustained
+          drop indicates a monitoring outage, not a capacity change.
+        tests: [not_null]

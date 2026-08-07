@@ -1,0 +1,40 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Raw landing tables written by pipeline/extract.py. Deliberately close
+      to what the Zabbix API returned — no cleaning, no reshaping — so a
+      transformation bug never requires re-extracting from Zabbix.
+    database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+    schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'TELEMETRY') }}"
+
+    tables:
+      - name: bronze_trends
+        description: Hourly min/avg/max/count per item, straight from trend.get.
+        columns:
+          - name: itemid
+            description: Zabbix item id. Joins to bronze_items.
+            tests: [not_null]
+          - name: clock
+            description: Unix epoch seconds for the start of the hour.
+            tests: [not_null]
+          - name: value_avg
+            description: Mean value across the hour.
+
+      - name: bronze_items
+        description: >
+          Item and host metadata, replaced in full on every run. Current
+          state of the fleet, not history.
+        columns:
+          - name: itemid
+            tests: [not_null, unique]
+          - name: host
+            description: Zabbix visible host name.
+            tests: [not_null]
+          - name: key_
+            description: >
+              Zabbix item key, e.g. vfs.fs.dependent.size[C:,pused]. The
+              part in brackets holds parameters — for filesystem items the
+              mount point and the measurement mode.
+            tests: [not_null]
