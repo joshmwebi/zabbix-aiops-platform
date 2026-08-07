@@ -37,11 +37,16 @@ models:
               inclusive: true
       - name: days_to_full
         description: Null when the volume is flat, shrinking, or has too little history.
+      - name: days_since_last_report
+        description: >
+          Days between the last observation and today. Two or more means the
+          host stopped reporting and its utilisation figure is stale.
+        tests: [not_null]
       - name: status
         tests:
           - not_null
           - accepted_values:
-              values: ["ok", "trending", "warning", "critical"]
+              values: ["ok", "trending", "warning", "critical", "stale"]
 
   - name: gold_fleet_daily
     description: One row per day summarising fleet-wide utilisation and reporting coverage.
